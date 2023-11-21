@@ -43,7 +43,8 @@ def main(args):
     # These are all image segments which are created from the images in $target_class folder
     cd.segmentation_dataset = cd.create_patches(
         imgs_identifier=args.target_class, 
-        param_dict={'n_segments': [15, 50, 80]}
+        param_dict={'n_segments': [15, 50, 80]},
+        save=True
     )
 
     # Using the activations for all image segments for each layer, create clusters and 

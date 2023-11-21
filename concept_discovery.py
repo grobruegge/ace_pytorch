@@ -101,7 +101,8 @@ class ConceptDiscovery(object):
         shape=self.image_shape,
         num_workers=self.num_workers)
 
-  def create_patches(self, imgs_identifier:str, method='slic', param_dict=None):
+  def create_patches(self, imgs_identifier:str, method:str='slic', 
+                     param_dict:dict=None, save:bool=False) -> dict:
     """Creates a set of image patches using superpixel methods.
 
     This method takes in the concept images and transforms it to a
@@ -118,7 +119,9 @@ class ConceptDiscovery(object):
     """
     segmentation_dataset = {}
     
-    filepath = os.path.join(self.base_dir.split(os.sep)[0], f'{imgs_identifier}_image_segmentations.npz')
+    filepath = os.path.join(
+      self.base_dir.split(os.sep)[0], f'{imgs_identifier}_image_segmentations.npz'
+    )
     # filepath_image_segments = os.path.join(self.base_dir.split(os.sep)[0], f'{imgs_identifier}_image_segments.mmap')
     # filepath_image_patches = os.path.join(self.base_dir.split(os.sep)[0], f'{imgs_identifier}_image_segments_patches.mmap')
     # filepath_image_numbers = os.path.join(self.base_dir.split(os.sep)[0], f'{imgs_identifier}_image_segments_numbers.mmap')
@@ -126,18 +129,19 @@ class ConceptDiscovery(object):
     # if all([os.path.exists(filename) for filename in [filepath_image_segments,filepath_image_patches, filepath_image_numbers]]):
     #   return np.memmap(filepath_image_segments, dtype=float, mode='r', shape=self.dims)
     if os.path.exists(filepath):
-      segmentation_dataset = np.load(filepath)
       print(f"[INFO] loaded image segmentations for {imgs_identifier} from file: {filepath}")
-      return segmentation_dataset['image_segments'], segmentation_dataset['image_numbers'], \
-        segmentation_dataset['image_patches']
+      return np.load(filepath)  
+      # return segmentation_dataset['image_segments'], segmentation_dataset['image_numbers'], \
+      #   segmentation_dataset['image_patches']
 
     if param_dict is None:
       param_dict = {}
 
-    segmentation_dataset['image_segments'], segmentation_dataset['image_numbers'], \
-      segmentation_dataset['image_patches'] = [], [], []
+    for key in ['image_segments', 'image_numbers', 'image_patches']:
+      # segmentation_dataset[key] = np.empty((0, self.image_shape[0], self.image_shape[1], 3))
+      segmentation_dataset[key] = []
 
-    imgs = self.load_images_from_folder(imgs_identifier, self.num_target_class_imgs)
+    self.target_class_imgs = self.load_images_from_folder(imgs_identifier, self.num_target_class_imgs)
          
     # image_segments_mmap = np.memmap(
     #   filepath_image_segments, 
@@ -160,17 +164,25 @@ class ConceptDiscovery(object):
     # current_idx = 0
 
     for idx, img in tqdm(
-      enumerate(imgs), 
-      total=len(imgs),
+      enumerate(self.target_class_imgs), 
+      total=len(self.target_class_imgs),
       desc=f'[INFO] Creating segmentations for {imgs_identifier} images'
     ):
       image_superpixels, image_patches = self._return_superpixels(
         img, method, param_dict
       )
       #for superpixel, patch in zip(image_superpixels, image_patches):
+      # segmentation_dataset['image_segments'] = np.concatenate(
+      #   (segmentation_dataset['image_segments'], image_superpixels), axis=0)
+      # segmentation_dataset['image_patches'] = np.concatenate(
+      #   (segmentation_dataset['image_patches'], image_patches), axis=0)
+      # segmentation_dataset['image_numbers'] = np.concatenate(
+      #   (segmentation_dataset['image_numbers'], np.full((image_superpixels.shape[0],), idx)), axis=0)
+
       segmentation_dataset['image_segments'].extend(image_superpixels)
-      segmentation_dataset['image_numbers'].extend([idx]*len(image_superpixels))
       segmentation_dataset['image_patches'].extend(image_patches)
+      segmentation_dataset['image_numbers'].extend([idx]*len(image_superpixels))
+      
     #   image_segments_mmap[current_idx:current_idx+len(image_superpixels)] = np.stack(image_superpixels)
     #   image_patches_mmap[current_idx:current_idx+len(image_superpixels)] = np.stack(image_patches)
     #   image_numbers_mmap[current_idx:current_idx+len(image_superpixels)] = idx
@@ -180,19 +192,15 @@ class ConceptDiscovery(object):
     # image_patches_mmap = image_patches_mmap[:current_idx]
     # image_numbers_mmap = image_numbers_mmap[:current_idx]
     
-    print(f'Saving image segmentations for {imgs_identifier} in file: {filepath}...')    
     # create numpy array from lists
     for key in segmentation_dataset:
       segmentation_dataset[key] = np.stack(segmentation_dataset[key])
 
-    np.savez(filepath, **segmentation_dataset)
+    if save:
+      print(f'Saving image segmentations for {imgs_identifier} in file: {filepath}...') 
+      np.savez(filepath, **segmentation_dataset)
     
     return segmentation_dataset
-
-  def _process_image(self, args, method, param_dict):
-      idx, img = args
-      superpixels, image_patches = self._return_superpixels(img, method, param_dict)
-      return idx, superpixels, image_patches
       
   def _return_superpixels(self, img, method='slic', param_dict=None):
     """Returns all patches for one image.
@@ -308,7 +316,7 @@ class ConceptDiscovery(object):
                                           Image.BICUBIC)).astype(float) / 255
     return image_resized, patch
 
-  def _load_or_calc_acts(self, model, imgs:np.ndarray, identifier:str, bs:int=100) -> dict:
+  def _load_or_calc_acts(self, model, imgs:np.ndarray, identifier:str, bs:int=50) -> dict:
     """ this function first checks whether the activations for the given layer are 
     already cached (as files) and if so, loads the corresponding file. However,
     if the activations from only one layer are missing, it re-calculates all 
@@ -444,7 +452,6 @@ class ConceptDiscovery(object):
     # calculate/load the activations from the target class image segments
     layer_activations = self._load_or_calc_acts(
       model=model,
-      #imgs=self.target_class_segmentations['image_segments'],
       imgs=self.segmentation_dataset['image_segments'],
       identifier=f'{self.target_class}_image_segments'
     )
@@ -481,12 +488,10 @@ class ConceptDiscovery(object):
 
         # Condition based on which concepts are choosen from cluster of image segments
 
-        # FIXME: These conditions do not make sense to me because they relate the number of
-        # concept images from which the segments in the clusters are to the total number of
-        # image segments?? Only cond3 seems to be true for most cases, which makes sense to me
-        highly_common_concept = len(concept_image_numbers) > 0.5 * len(label_idxs)
-        mildly_common_concept = len(concept_image_numbers) > 0.25 * len(label_idxs)
-        non_common_concept = len(concept_image_numbers) > 0.1 * len(label_idxs)
+        # check whether the clusters are large enough compared to overall amount of segmentations
+        highly_common_concept = len(label_idxs) > 0.1 * len(self.concept_dict['cluster_label'])
+        mildly_common_concept = len(label_idxs) > 0.05 * len(self.concept_dict['cluster_label'])
+        non_common_concept = len(label_idxs) > 0.01 * len(self.concept_dict['cluster_label'])
         
         # these conditions check that the image segments present within one cluster belong to
         # more than 50% / 25 % of the total number of target class images
@@ -509,9 +514,11 @@ class ConceptDiscovery(object):
               'image_numbers': self.segmentation_dataset['image_numbers'][concept_idxs]
           }
           self.concept_dict[concept_name + '_center'] = centers[cluster_idx]
-          tqdm.write(f"[INFO] cluster {cluster_idx}/{self.concept_dict['cluster_label'].max() + 1} \
-            of size {len(label_idxs)}/{len(self.concept_dict['cluster_label'])} passed conditions \
-              ({highly_common_concept}|{cond2}|{cond3}) and is considered a concept")
+          tqdm.write(
+            f"[INFO] cluster {cluster_idx}/{self.concept_dict['cluster_label'].max() + 1} "
+            f"of size {len(label_idxs)}/{len(self.concept_dict['cluster_label'])} passed conditions "
+            f"({highly_common_concept}|{cond2}|{cond3}) and is considered a concept"
+          )
 
     self.concept_dict.pop('cluster_label', None)
     self.concept_dict.pop('cluster_cost', None)
@@ -529,13 +536,14 @@ class ConceptDiscovery(object):
       # check if directories already exists, and if so, replace them with empty directories
       if os.path.exists(patches_dir):
         shutil.rmtree(patches_dir)
+        tqdm.write(f"[INFO] cleared directory: {patches_dir}")
       os.makedirs(patches_dir)
-      tqdm.write(f"[INFO] cleared directory: {patches_dir}")
+  
       if os.path.exists(images_dir):
           shutil.rmtree(images_dir)
+          tqdm.write(f"[INFO] cleared directory: {images_dir}")
       os.makedirs(images_dir)
-      tqdm.write(f"[INFO] cleared directory: {images_dir}")
-
+      
       # create RGB images with image values between 0-256
       patches = (np.clip(self.concept_dict[concept]['patches'], 0, 1) * 256).astype(np.uint8)
       images = (np.clip(self.concept_dict[concept]['images'], 0, 1) * 256).astype(np.uint8)
@@ -677,18 +685,18 @@ class ConceptDiscovery(object):
     # calculate the activations for the datasets containing random images 
     # (are used as negative examples to train the CAVs)
     all_random_acts = {}
+    np.random.seed(42)
+    
+    random_segments = self.create_patches(
+      imgs_identifier='random',
+      param_dict={'n_segments': [15,50,80]},
+      save=True
+    )['image_segments']
+    
     for random_dataset_folder in ['random_{}'.format(i) for i in np.arange(self.num_random_datasets)]:
-      # create segments from random images to be comparable
-      # to clusters which are also made from segments
-      random_dataset = self.create_patches(
-        imgs_identifier=random_dataset_folder,
-        param_dict={'n_segments': [15, 50, 80]}
-      )['image_segments']
       
-      # Randomly select a subset of k samples
-      np.random.seed(42)
       selected_indices = np.random.choice(
-        random_dataset.shape[0], 
+        random_segments.shape[0], 
         self.max_cluster_size, # select as max num of examples of concepts
         replace=False # same index cannot occur twice
       )
@@ -696,7 +704,7 @@ class ConceptDiscovery(object):
       # calculate activations for random image segments
       all_random_acts[random_dataset_folder] = self._load_or_calc_acts(
         model=model,
-        imgs=random_dataset[selected_indices],
+        imgs=random_segments[selected_indices],
         identifier=random_dataset_folder,
       )
     
@@ -713,19 +721,16 @@ class ConceptDiscovery(object):
 
     # train the CAV for a random concept vs. all random counterparts (later used
     # for statistical testing)
-    random_dataset = self.create_patches(
-      imgs_identifier='random',
-      param_dict={'n_segments': [15, 50, 80]}
-    )['image_segments']
+    
     selected_indices = np.random.choice(
-      random_dataset.shape[0], 
+      random_segments.shape[0], 
       self.max_cluster_size, # select as max num of examples of concepts
       replace=False # same index cannot occur twice
     )
     self.cavs['random'] = self._train_cavs_sklearn(
       concept_acts=self._load_or_calc_acts(
         model=model,
-        imgs=random_dataset[selected_indices],
+        imgs=random_segments[selected_indices],
         identifier='random',
       ), 
       all_random_acts=all_random_acts,
@@ -777,7 +782,7 @@ class ConceptDiscovery(object):
       
     # take different target class images than those used to create the 
     # image segments (and therewith the concepts)
-    target_class_imgs = target_class_imgs[-self.num_target_class_imgs:]
+    target_class_imgs = self.target_class_imgs[-self.num_target_class_imgs:]
 
     # get the gradients for the target class images of the specified layer
     gradients = helpers.get_layer_activations(
@@ -941,10 +946,6 @@ class ConceptDiscovery(object):
       else:
         raise ValueError('Invalid mode!')
       idxs = idxs[:num]
-      target_class_imgs = self.load_images_from_folder(
-        self.target_class, 
-        self.num_target_class_imgs
-      )
       for i, idx in enumerate(idxs):
         ax = plt.Subplot(fig, inner[i])
         ax.imshow(concept_images[idx])
@@ -957,7 +958,7 @@ class ConceptDiscovery(object):
         ax = plt.Subplot(fig, inner[i + num])
         mask = 1 - (np.mean(concept_patches[idx] == float(
             self.average_image_value) / 255, -1) == 1)
-        image = target_class_imgs[concept_image_numbers[idx]]
+        image = self.target_class_imgs[concept_image_numbers[idx]]
         ax.imshow(segmentation.mark_boundaries(image, mask, color=(1, 1, 0), mode='thick'))
         ax.set_xticks([])
         ax.set_yticks([])

@@ -42,7 +42,7 @@ def make_model(model_name):
   return model
 
 def get_layer_activations(model, layer:str, imgs:np.ndarray, 
-                          batch_size:int=100, get_grads_for_cls_id:int=None):
+                          batch_size:int=50, get_grads_for_cls_id:int=None):
   """Run input images through the PyTorch model and optain activations from
   specified layer
 
