@@ -1,4 +1,4 @@
-# PyTorch Implementation Automatic Concept Based Explanations (ACE)
+# Automatic Concept-based Explanation and Evaluation
 
 This is the PyTorch implementations of the paper [Towards Automatic Concept-based Explanations](https://arxiv.org/abs/1902.03129) presented at NeurIPS 2019.
 
@@ -15,66 +15,20 @@ Required python libraries:
   - PIL
 ```
 
-### Installing
+### Getting started
 
-An example run command:
+#### Arguments
 
-```
-python3 ace_run.py --num_parallel_runs 0 --target_class zebra --source_dir SOURCE_DIR --working_dir SAVE_DIR --model_to_run GoogleNet --model_path ./tensorflow_inception_graph.pb --labels_path ./imagenet_labels.txt --bottlenecks mixed4c --num_random_exp 40 --max_imgs 50 --min_imgs 30
-```
+- **--target_class**: Target class of the PyTorch network to be explained 
+- **--source_dir**: Directory which contains the target class images as well as random images used to train the CAV. The following folders are (minimally) required within `source_dir`:
+  - One folder with the name of `target_class` (needs to be changed accordingly) containing images of the target class to be explained. Create a seperate folder for each target_class you wish to explain.
+  - One folder called "_random_" (fixed name, do not change!) contaning at least 500 random images, ideally of as many different classes as possible
+- **--working_dir**: Directory used to save/load cached values (such as model activations) and results. This folder should be empty if using the framework for the first time.
+- **--model_name**: Name of the PyTorch model to be interpreted (has to be recognited by PyTorch).
+- **--model_path**: If you want to use a different dataset than ImageNet1k for any model available in PyTorch, you can additionally pass the file path to the model weights for that dataset and they will be loaded. CURRENTLY, THIS DOES NOT WORK!
+- **--labels_path** If you cloned this repository, the label-file already exists and this argument should not be changed. Only change if for whatever reason you want to move the label-file to a differrent directory.
+- **--num_random_datasets**
 
-where:
-```
-num_random_exp: number of random concepts with respect to which concept-activaion-vectors are computed for calculating the TCAV score of a discovered concept (recommended >20).
-```
-For example if you set num_random_exp=20, you need to create folders random500_0, rando500_1, ..., random_500_19 and put them in the SOURCE_DIR where each folder contains a set of 50-500 randomly selected images of the dataset (ImageNet in our case). 
+- **--num_parallel_runs**: Whether to run the code using multiprocessing and specifies how many CPU cores should be used. Defaults to 0 (i.e., no multiprocessing). CURRENTLY, THIS DOES NOT WORK!
 
-```
-target_class: Name of the class which prediction is to be explained.
-```
-
-```
-SOURCE_DIR: Directory where the discovery images (refer to the paper) are saved. 
-It should contain (at least) num_random_exp + 2 folders: 
-1-"target_class" which contains images of the class to be explained (in this example the shoulder should be names as zebra). 
-2-"random_discovery" which contains randomly selected images of the same dataset (at lease $max_imgs number of images).
-3-"random500_0, ..., random_500_${num_random_exp} where each one contains 500 randomly selected images from the data set"
-```
-
-```
-num_parallel_runs: Number of parallel jobs (loading images, etc). If 0, parallel processing is deactivated.
-```
-
-
-```
-SAVE_DIR: Where the experiment results (both text report and the discovered concept examples) are saved.
-```
-
-```
-model_to_run: One of InceptionV3 or GoogleNet is supported (the weights are provided for GoogleNet). You can change the "make_model" function in ace_helpers.py to have your own customized model.
-model_path: Path to the model's saved graph.
-```
-If you are using a custom model, you should write a wrapper for it containing the following methods:
-```
-run_examples(images, BOTTLENECK_LAYER): which basically returens the activations of the images in the BOTTLENECK_LAYER. 'images' are original images without preprocessing (float between 0 and 1)
-get_image_shape(): returns the shape of the model's input
-label_to_id(CLASS_NAME): returns the id of the given class name.
-get_gradient(activations, CLASS_ID, BOTTLENECK_LAYER): computes the gradient of the CLASS_ID logit in the logit layer with respect to activations in the BOTTLENECK_LAYER.
-```
-
-## Authors
-
-* **Amirata Ghorbani** - [Website](http://web.stanford.edu/~amiratag)
-* **James Wexler** - [Website](https://ai.google/research/people/105507/)
-* **James Zou** - [Website](https://www.james-zou.com/)
-* **Been Kim** - [Website](https://beenkim.github.io/)
-
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
-
-## Acknowledgments
-
-Work was done as part of Google Brain internship.
-
+To be continued...

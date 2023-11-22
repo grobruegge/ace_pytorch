@@ -141,8 +141,9 @@ class ConceptDiscovery(object):
       # segmentation_dataset[key] = np.empty((0, self.image_shape[0], self.image_shape[1], 3))
       segmentation_dataset[key] = []
 
-    self.target_class_imgs = self.load_images_from_folder(imgs_identifier, self.num_target_class_imgs)
-         
+    imgs = self.load_images_from_folder(imgs_identifier, self.num_target_class_imgs)
+    if imgs_identifier == self.target_class:
+      self.target_class_imgs = imgs
     # image_segments_mmap = np.memmap(
     #   filepath_image_segments, 
     #   dtype=float, 
@@ -164,8 +165,8 @@ class ConceptDiscovery(object):
     # current_idx = 0
 
     for idx, img in tqdm(
-      enumerate(self.target_class_imgs), 
-      total=len(self.target_class_imgs),
+      enumerate(imgs), 
+      total=len(imgs),
       desc=f'[INFO] Creating segmentations for {imgs_identifier} images'
     ):
       image_superpixels, image_patches = self._return_superpixels(
@@ -488,22 +489,20 @@ class ConceptDiscovery(object):
 
         # Condition based on which concepts are choosen from cluster of image segments
 
-        # check whether the clusters are large enough compared to overall amount of segmentations
-        highly_common_concept = len(label_idxs) > 0.1 * len(self.concept_dict['cluster_label'])
-        mildly_common_concept = len(label_idxs) > 0.05 * len(self.concept_dict['cluster_label'])
-        non_common_concept = len(label_idxs) > 0.01 * len(self.concept_dict['cluster_label'])
+        # check whether the clusters are above average size
+        # common_concept = len(label_idxs) > (len(self.concept_dict['cluster_label']) /
+        #   self.concept_dict['cluster_label'].max() + 1)
         
         # these conditions check that the image segments present within one cluster belong to
         # more than 50% / 25 % of the total number of target class images
-        mildly_populated_concept = len(concept_image_numbers) > 0.25 * self.num_target_class_imgs
-        highly_populated_concept = len(concept_image_numbers) > 0.5 * self.num_target_class_imgs
-
-        cond2 = mildly_populated_concept and mildly_common_concept
-        cond3 = non_common_concept and highly_populated_concept
-
+        middle_populated_concept = len(concept_image_numbers) > 0.5 * self.num_target_class_imgs
+        # cond1 = len(concept_image_numbers) > 0.75 * self.num_target_class_imgs
+        
+        # cond2 = middle_populated_concept and common_concept
+        
         # if one of the following conditions are fulfilled, the 
         # cluster is considered as concept 
-        if highly_common_concept or cond2 or cond3:
+        if middle_populated_concept:
           concept_number += 1
           concept_name = '{}_concept{}'.format(self.target_class, concept_number)
           self.concept_dict['concepts'].append(concept_name)
@@ -517,7 +516,7 @@ class ConceptDiscovery(object):
           tqdm.write(
             f"[INFO] cluster {cluster_idx}/{self.concept_dict['cluster_label'].max() + 1} "
             f"of size {len(label_idxs)}/{len(self.concept_dict['cluster_label'])} passed conditions "
-            f"({highly_common_concept}|{cond2}|{cond3}) and is considered a concept"
+            f"({middle_populated_concept}) and is considered a concept"
           )
 
     self.concept_dict.pop('cluster_label', None)
@@ -527,21 +526,20 @@ class ConceptDiscovery(object):
     """
     Saves discovered concept's images and patches
     """
+    
+    concept_dir = os.path.join(self.base_dir, 'concepts')
+    if os.path.exists(concept_dir):
+      shutil.rmtree(concept_dir)
+      print(f"[INFO] Deleted existing concepts in folder: {concept_dir}")
+    os.makedirs(concept_dir)
+    
     # iterate over all concepts
     for concept in tqdm(self.concept_dict['concepts'], desc='[INFO] saving concept images/patches'):
       # set directory names
       patches_dir = os.path.join(self.base_dir, 'concepts', concept + '_patches')
       images_dir = os.path.join(self.base_dir, 'concepts', concept)
       
-      # check if directories already exists, and if so, replace them with empty directories
-      if os.path.exists(patches_dir):
-        shutil.rmtree(patches_dir)
-        tqdm.write(f"[INFO] cleared directory: {patches_dir}")
       os.makedirs(patches_dir)
-  
-      if os.path.exists(images_dir):
-          shutil.rmtree(images_dir)
-          tqdm.write(f"[INFO] cleared directory: {images_dir}")
       os.makedirs(images_dir)
       
       # create RGB images with image values between 0-256
@@ -685,7 +683,7 @@ class ConceptDiscovery(object):
     # calculate the activations for the datasets containing random images 
     # (are used as negative examples to train the CAVs)
     all_random_acts = {}
-    np.random.seed(42)
+    # np.random.seed(42)
     
     random_segments = self.create_patches(
       imgs_identifier='random',
@@ -705,6 +703,7 @@ class ConceptDiscovery(object):
       all_random_acts[random_dataset_folder] = self._load_or_calc_acts(
         model=model,
         imgs=random_segments[selected_indices],
+        # imgs=self.load_images_from_folder(random_dataset_folder, self.max_cluster_size),
         identifier=random_dataset_folder,
       )
     
@@ -731,6 +730,7 @@ class ConceptDiscovery(object):
       concept_acts=self._load_or_calc_acts(
         model=model,
         imgs=random_segments[selected_indices],
+        # imgs=self.load_images_from_folder('random', self.max_cluster_size),
         identifier='random',
       ), 
       all_random_acts=all_random_acts,
@@ -742,6 +742,8 @@ class ConceptDiscovery(object):
       pickle.dump(self.cavs, file)
       print(f"[INFO] saved CAVs in file {filepath}")
 
+    del random_segments
+    
   def _sort_concepts(self):
     # define a function to calculate the mean value of a list
     def mean_value(values):
@@ -966,9 +968,9 @@ class ConceptDiscovery(object):
         ax.grid(False)
         fig.add_subplot(ax)
       
-    filepath = os.path.join(self.base_dir, f'{self.layer}_concept_examples.png')
-    fig.savefig(filepath)
-    
+      filepath = os.path.join(self.base_dir, f'{self.layer}_concept_examples.png')
+      fig.savefig(filepath)
+      
     print(f"[INFO] saved example images for each concept in file: {filepath}") 
       
     plt.clf()

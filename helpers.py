@@ -129,7 +129,6 @@ def create_dirs(working_dir:str, target_class:str, model_name:str, layer:str) ->
   base_dir = os.path.join(working_dir, model_name, target_class, layer)
   os.makedirs(base_dir, exist_ok=True)
   # create directories to load/save cached values and results
-  os.makedirs(os.path.join(base_dir, 'concepts'), exist_ok=True)
   os.makedirs(os.path.join(base_dir, 'acts'), exist_ok=True)
   print(f"[INFO] {os.path.join(os.getcwd(), base_dir)} is used to load/save cached values and results")
   return os.path.normpath(base_dir)
